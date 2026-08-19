@@ -1,0 +1,35 @@
+name: Deploy Staging Infrastructure
+
+on:
+  workflow_dispatch: # Triggered manually from the GitHub Actions tab
+
+jobs:
+  terraform-staging:
+    name: Terraform Staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init & Apply
+        run: |
+          cd environments/staging
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Display Outputs
+        run: |
+          cd environments/staging
+          echo "### 🌐 Staging Infrastructure Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "**Staging Site URL:** $(terraform output -raw staging_site_url)" >> $GITHUB_STEP_SUMMARY
+          echo "**Staging EC2 IP:** $(terraform output -raw staging_ec2_ip)" >> $GITHUB_STEP_SUMMARY
