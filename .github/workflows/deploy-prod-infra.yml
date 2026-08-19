@@ -1,0 +1,36 @@
+name: Deploy Production Infrastructure
+
+on:
+  workflow_dispatch: # Triggered manually from the GitHub Actions tab
+
+jobs:
+  terraform-prod:
+    name: Terraform Production
+    runs-on: ubuntu-latest
+    environment: production # Optional: Ties it to GitHub environment protection rules if you want approvals
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init & Apply
+        run: |
+          cd environments/prod
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Display Outputs
+        run: |
+          cd environments/prod
+          echo "### 🟢 Production Infrastructure Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "**Production Site URL:** $(terraform output -raw prod_site_url)" >> $GITHUB_STEP_SUMMARY
+          echo "**Production EC2 IP:** $(terraform output -raw prod_ec2_ip)" >> $GITHUB_STEP_SUMMARY
