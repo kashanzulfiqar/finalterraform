@@ -1,0 +1,68 @@
+name: Bootstrap Terraform State Buckets
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-state-buckets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Create Bootstrap Directory & Apply
+        run: |
+          mkdir -p bootstrap
+          cat << 'EOF' > bootstrap/main.tf
+          terraform {
+            required_version = ">= 1.5.0"
+            required_providers {
+              aws = {
+                source  = "hashicorp/aws"
+                version = "~> 5.0"
+              }
+            }
+          }
+
+          provider "aws" {
+            region = "us-east-1"
+          }
+
+          resource "aws_s3_bucket" "staging_state" {
+            bucket        = "kashan-stagingtfstate-storage-2026"
+            force_destroy = false
+          }
+
+          resource "aws_s3_bucket_versioning" "staging_versioning" {
+            bucket = aws_s3_bucket.staging_state.id
+            versioning_configuration {
+              status = "Enabled"
+            }
+          }
+
+          resource "aws_s3_bucket" "prod_state" {
+            bucket        = "kashan-prodtfstate-storage-2026"
+            force_destroy = false
+          }
+
+          resource "aws_s3_bucket_versioning" "prod_versioning" {
+            bucket = aws_s3_bucket.prod_state.id
+            versioning_configuration {
+              status = "Enabled"
+            }
+          }
+          EOF
+
+          cd bootstrap
+          terraform init
+          terraform apply -auto-approve
