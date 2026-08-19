@@ -1,1 +1,7 @@
-txt
+Before running your infrastructure pipelines, ensure these resources are already created in your AWS account (us-east-1):
+
+    EC2 SSH Key Pair: An active key pair named keyforec2.
+
+    Elastic IPs: Pre-allocated Elastic IP addresses for both your Staging and Production servers so they remain fixed.
+
+    Terraform State Buckets: The S3 buckets to store your .tfstate files (which you can deploy using the bootstrap workflow below).
