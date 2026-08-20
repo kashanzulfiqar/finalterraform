@@ -1,4 +1,9 @@
-# --- 0. Data Sources for AWS Managed CloudFront Policies ---
+# --- 0. Providers & Data Sources ---
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
 }
@@ -7,7 +12,22 @@ data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
 
-# --- 1. S3 Bucket for Static Frontend ---
+# --- 1. ACM Certificate for CloudFront (Must be in us-east-1) ---
+resource "aws_acm_certificate" "frontend_cert" {
+  provider          = aws.us_east_1
+  domain_name       = var.frontend_domain_name
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# --- 2. S3 Bucket for Static Frontend ---
 resource "aws_s3_bucket" "frontend" {
   bucket        = "kashan-my-app-frontend-${var.environment}"
   force_destroy = true
@@ -21,7 +41,7 @@ resource "aws_s3_bucket_public_access_block" "frontend_privacy" {
   restrict_public_buckets = true
 }
 
-# --- 2. CloudFront Origin Access Control (OAC) ---
+# --- 3. CloudFront Origin Access Control (OAC) ---
 resource "aws_cloudfront_origin_access_control" "oac" {
   name                              = "s3-oac-${var.environment}"
   origin_access_control_origin_type = "s3"
@@ -29,62 +49,23 @@ resource "aws_cloudfront_origin_access_control" "oac" {
   signing_protocol                  = "sigv4"
 }
 
-# --- 3. CloudFront Distribution ---
+# --- 4. CloudFront Distribution (Frontend with Custom Domain & SSL) ---
 resource "aws_cloudfront_distribution" "cdn" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
+  aliases             = [var.frontend_domain_name]
 
   depends_on = [
-    aws_cloudfront_origin_access_control.oac
+    aws_cloudfront_origin_access_control.oac,
+    aws_acm_certificate.frontend_cert
   ]
 
-  # S3 Frontend Origin
+  # S3 Frontend Origin Only
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id                = "S3-${aws_s3_bucket.frontend.id}"
     origin_access_control_id = aws_cloudfront_origin_access_control.oac.id
-  }
-
-  # HTTPS Backend Origin
-  origin {
-    domain_name = var.backend_domain_name
-    origin_id   = "Backend-API"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
-  # API Cache Behavior (/api/*)
-  ordered_cache_behavior {
-    path_pattern     = "/api/*"
-    target_origin_id = "Backend-API"
-
-    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods  = ["GET", "HEAD"]
-
-    viewer_protocol_policy = "redirect-to-https"
-
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
-  }
-
-  # User API Cache Behavior (/user/*)
-  ordered_cache_behavior {
-    path_pattern     = "/user/*"
-    target_origin_id = "Backend-API"
-
-    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods  = ["GET", "HEAD"]
-
-    viewer_protocol_policy = "redirect-to-https"
-
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
   }
 
   # Frontend Default Cache Behavior
@@ -128,11 +109,13 @@ resource "aws_cloudfront_distribution" "cdn" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn            = aws_acm_certificate.frontend_cert.arn
+    ssl_support_method             = "sni-only"
+    minimum_protocol_version       = "TLSv1.2_2021"
   }
 }
 
-# --- 4. S3 Bucket Policy allowing CloudFront Access ---
+# --- 5. S3 Bucket Policy allowing CloudFront Access ---
 resource "aws_s3_bucket_policy" "allow_cloudfront" {
   bucket = aws_s3_bucket.frontend.id
 
@@ -155,7 +138,7 @@ resource "aws_s3_bucket_policy" "allow_cloudfront" {
   })
 }
 
-# --- 5. EC2 Instance & Static Elastic IP Integration ---
+# --- 6. EC2 Instance & Static Elastic IP Integration (ap-southeast-1) ---
 resource "aws_security_group" "backend_sg" {
   name        = "backend-sg-${var.environment}"
   description = "Security group for backend EC2 instance"
@@ -197,10 +180,10 @@ resource "aws_security_group" "backend_sg" {
 }
 
 resource "aws_instance" "backend" {
-  ami                  = var.ami_id
-  instance_type        = var.instance_type
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.backend_sg.id]
-  key_name             = var.key_name
+  key_name               = var.key_name
 
   tags = {
     Name        = "backend-${var.environment}"
@@ -218,7 +201,7 @@ resource "aws_eip_association" "eip_assoc" {
   allocation_id = data.aws_eip.existing_eip.id
 }
 
-# --- 6. CloudFront Cache Invalidation Trigger ---
+# --- 7. CloudFront Cache Invalidation Trigger ---
 resource "terraform_data" "invalidate_cache" {
   triggers_replace = [
     aws_cloudfront_distribution.cdn.id
