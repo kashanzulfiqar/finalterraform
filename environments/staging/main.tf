@@ -15,7 +15,7 @@ terraform {
 } 
 
 provider "aws" {
-  region = "us-east-1"
+  region = "ap-southeast-1"
 }
 
 module "staging_infra" {
@@ -25,6 +25,7 @@ module "staging_infra" {
   instance_type            = "t3.micro"
   ami_id                   = "ami-0b6d9d3d33ba97d99"
   key_name                 = "keyforec2"
+  frontend_domain_name     = "stage.daftarpro.com"
   backend_domain_name      = "stage-api.daftarpro.com"
   preallocated_eip_address = "YOUR_STAGING_ELASTIC_IP_HERE" # Replace with your actual static IP string
 }
