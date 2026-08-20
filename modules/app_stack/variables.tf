@@ -5,7 +5,7 @@ variable "environment" {
 
 variable "aws_region" {
   type        = string
-  default     = "us-east-1"
+  default     = "ap-southeast-1"
 }
 
 variable "instance_type" {
@@ -23,9 +23,14 @@ variable "key_name" {
   description = "ec2 security key"
 }
 
+variable "frontend_domain_name" {
+  type        = string
+  description = "Custom domain name for the frontend (e.g., daftarpro.com or stage.daftarpro.com)"
+}
+
 variable "backend_domain_name" {
   type        = string
-  description = "Domain name for the backend API (e.g., stage-api.daftarpro.com)"
+  description = "Domain name for the backend API (e.g., api.daftarpro.com)"
 }
 
 variable "preallocated_eip_address" {
